@@ -1,0 +1,11 @@
+# Path to genome fasta file (must have ".fa" extension)
+DNA: '<full_path>/genome.fa'
+
+# Path to gene annotations file in GTF format.
+GTF: '<full_path>/annotations.gtf'
+
+# Path to output folder where files will be written.
+OUT_DIR: '<full_path>/outputs'
+
+# Path to a JSON file with samples and their corresponding FASTQ files.
+SAMPLES_JSON: '<full_path>/samples.json'

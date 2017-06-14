@@ -1,0 +1,107 @@
+{
+    "__default__": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.def",
+        "cores"		: 2,
+        "bl"		: 2,
+        "time"      : "2:00:00"
+    },
+    "fastqc_init": {
+    	"q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.tophat",
+        "cores"		: 4,
+        "bl"		: 4,
+        "time"		: "12:00:00"
+    },
+	"trimming": {
+	"q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.cflnks",
+        "cores"		: 4,
+        "bl"		: 4,
+        "time"		: "12:00:00"
+	},
+    "fastqc_final": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.tophat",
+        "cores"     : 4,
+        "bl"        : 4,
+        "time"      : "12:00:00"
+    },
+	"index": {
+		"q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.cffmrg",
+        "cores"		: 2,
+        "bl"		: 2,
+        "time"		: "3:00:00"
+	},
+	"tophat": {
+		"q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.mkcdna",
+        "cores"		: 2,
+        "bl"		: 2,
+        "time"		: "2:00:00"
+	},
+	"multiQC_fastQC": {
+		"q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"		: 4,
+        "bl"		: 4,
+        "time"		: "4:00:00"
+	},
+    "cufflinks": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"     : 8,
+        "bl"        : 8,
+        "time"      : "24:00:00"
+    },
+    "cuffmerge": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"     : 2,
+        "bl"        : 2,
+        "time"      : "2:00:00"
+    },
+    "cuffquant": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"     : 8,
+        "bl"        : 8,
+        "time"      : "24:00:00"
+    },
+    "cuffnorm": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"     : 8,
+        "bl"        : 8,
+        "time"      : "24:00:00"
+    },
+    "make_cdna": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"     : 4,
+        "bl"        : 4,
+        "time"      : "4:00:00"
+    },
+    "express": {
+        "q"         : "regular.q",
+        "output"    : "/dev/null",
+        "jname"     : "sm.STAR2",
+        "cores"     : 4,
+        "bl"        : 4,
+        "time"      : "4:00:00"
+    }
+}
+
