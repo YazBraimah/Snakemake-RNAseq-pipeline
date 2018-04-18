@@ -1,10 +1,9 @@
 """
 Author: Y. Ahmed-Braimah
---- Snakemake workflow to process Ethan's Ae. aegypti RNAeq data
+--- Snakemake workflow for RNAseq using the Tuxedo-II pipeline
 """
 
 import json
-# import psutil
 from os.path import join, basename, dirname
 from os import getcwd
 from subprocess import check_output
@@ -94,7 +93,7 @@ rule fastqcSE:
     run:
         if not os.path.exists(join(OUT_DIR, 'fastQC')):
             os.makedirs(join(OUT_DIR, 'fastQC'))
-        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {input.r1} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
@@ -123,7 +122,7 @@ rule fastqcPE:
     run:
         if not os.path.exists(join(OUT_DIR, 'fastQC')):
             os.makedirs(join(OUT_DIR, 'fastQC'))
-        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
@@ -148,7 +147,7 @@ rule hisat2_se_mapping:
     message: 
         """--- Mapping SE reads for sample {wildcards.sample} to genome with HISAT-2 """
     run:
-        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp ' + join(dirname(DNA), rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp ' + join(INDEX, '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
@@ -180,7 +179,7 @@ rule hisat2_pe_mapping:
     message: 
         """--- Mapping PE reads for sample {wildcards.sample} to genome with HISAT-2 """
     run:
-        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp ' + join(dirname(DNA), rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp ' + join(INDEX, '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
@@ -215,7 +214,7 @@ rule stringtie_assembly:
     message: 
         """--- Assembling transcripts for sample {wildcards.sample} with StringTie """
     run:
-        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {params.gtf} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {input.bam} ' + join(WORK_DIR, USER, JOB_ID) +
@@ -247,7 +246,7 @@ rule merge_assemblies:
     message: 
         """--- Merging StringTie transcripts """
     run:
-        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {params.gtf} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && ls -1 ' + join(OUT_DIR) + '/StringTie/*/*.gtf > ' + join(OUT_DIR, 'StringTie', 'assemblies.txt') +
@@ -274,7 +273,7 @@ rule compare_gtf:
     message: 
         """--- Comparing StringTie merged assembly with reference GTF """
     run:
-        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {params.gtf} {input.STasmbly} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
@@ -302,7 +301,7 @@ rule abundances:
     message: 
         """--- Estimating transcript abundances for sample {wildcards.sample} with StringTie"""
     run:
-        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {input.bam} {input.mrgd} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
@@ -328,7 +327,7 @@ rule collate_counts:
     message: 
         """--- Outputting count matrices """
     run:
-        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+
         shell('prepDE.py'
                 ' -i ' + join(OUT_DIR, 'ballgown') + 
                 ' -g ' + join(OUT_DIR, 'ballgown', 'gene_counts.csv') +
@@ -352,7 +351,7 @@ rule multiQC:
     message: 
         """--- Running MultiQC """
     run:
-        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+    
         shell('ls -1 ' + join(OUT_DIR) + '/HISAT-2/*/*log > ' + join(OUT_DIR, 'MultiQC', 'summary_files.txt'))
         shell('ls -1 ' + join(OUT_DIR) + '/fastQC/*fastqc.zip >> ' + join(OUT_DIR, 'MultiQC', 'summary_files.txt'))
         shell('multiqc'
