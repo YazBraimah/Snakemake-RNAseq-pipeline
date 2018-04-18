@@ -1,31 +1,14 @@
 """
 Author: Y. Ahmed-Braimah
---- Snakemake workflow to process single-end RNA-Seq.
+--- Snakemake workflow to process Ethan's Ae. aegypti RNAeq data
 """
 
 import json
+# import psutil
 from os.path import join, basename, dirname
 from os import getcwd
 from subprocess import check_output
-
-##--------------------------------------------------------------------------------------##
-## Global config files: 
-##--------------------------------------------------------------------------------------##
-
-configfile: 'config.yml'
-
-# Full path to an uncompressed FASTA file with all chromosome sequences.
-DNA = config['DNA']
-
-# Full path to an uncompressed GTF file with known gene annotations.
-GTF = config['GTF']
-
-# Full path to a folder where output files will be created.
-OUT_DIR = config['OUT_DIR']
-
-# Samples and their corresponding filenames.
-FILES = json.load(open(config['SAMPLES_JSON'])) # The "samples.json" file can be created with
-SAMPLES = sorted(FILES.keys())                  # the "make_json_SE/PE_samples.py" script
+import os
 
 ##--------------------------------------------------------------------------------------##
 ## Functions
@@ -42,367 +25,337 @@ def rstrip(text, suffix):
     return text[:len(text)-len(suffix)]
 
 ##--------------------------------------------------------------------------------------##
+## Global config files: 
+##--------------------------------------------------------------------------------------##
+
+configfile: 'config.yml'
+
+# Full path to an uncompressed FASTA file with all chromosome sequences.
+DNA = config['DNA']
+INDEX = config['INDEX']
+
+# Full path to an uncompressed GTF file with all gene annotations.
+GTF = config['GTF']
+
+# Full path to a folder where final output files will be deposited.
+OUT_DIR = config['OUT_DIR']
+WORK_DIR = config['WORK_DIR']
+HOME_DIR = config['HOME_DIR']  # the "launch_snakemake.sh" and "config.yml" files should be here
+
+## set the usr and job environments for each job (specific for CBSU qsub jobs)
+USER = os.environ.get('USER')
+JOB_ID = os.environ.get('JOB_ID')
+
+# Samples and their corresponding filenames.
+# single-end
+seFILES = json.load(open(config['SE_SAMPLES_JSON'])) 
+seSAMPLES = sorted(seFILES.keys())                  
+# paired-end:
+peFILES = json.load(open(config['PE_SAMPLES_JSON'])) 
+peSAMPLES = sorted(peFILES.keys())           
+
+# read both
+# FILES = json.load(open(config['SAMPLES_JSON']))
+combinedSam = [peSAMPLES, seSAMPLES]
+SAMPLES = [y for x in combinedSam for y in x]  
+
+## Create the final output directory if it doesn't already exist
+if not os.path.exists(OUT_DIR):
+            os.makedirs(OUT_DIR)
+
+##--------------------------------------------------------------------------------------##
 ## RULES
 ##--------------------------------------------------------------------------------------##
+
 
 ## Final expected output(s)
 rule all: 
     input: 
-        join(OUT_DIR, 'Cuffmerge', 'merged.gtf'),
-        expand(join(OUT_DIR, 'fastQC_initial', '{sample}' + '.R1_fastqc.html'), sample = SAMPLES),
-        expand(join(OUT_DIR, 'fastQC_final', '{sample}' + '_trimmed_R1_fastqc.html'), sample = SAMPLES),
-        join(OUT_DIR, 'MultiQC_fastQC', 'multiqc_report.html'),
-        expand(join(OUT_DIR, '{sample}', 'Cuffquant', 'abundances.cxb'), sample = SAMPLES),
-        join(OUT_DIR, 'eXpress', 'genes.TMM.EXPR.matrix'),
-        join(OUT_DIR, 'Cuffnorm', 'expression_data', 'run.info')
+        join(OUT_DIR, 'MultiQC', 'multiqc_report.html'),
+        join(OUT_DIR, 'StringTie', 'gffcmp.annotated.gtf'),
+        join(OUT_DIR, 'ballgown', 'gene_counts.csv'), 
+        join(OUT_DIR, 'ballgown', 'transcript_counts.csv')
+        
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
 
-
-## Rule to check quality of raw reads
-rule fastqc_init:
+## Rule to check raw SE read quality
+rule fastqcSE:
     input:
-        r1 = lambda wildcards: FILES[wildcards.sample]['R1']
+        r1 = lambda wildcards: seFILES[wildcards.sample]['R1']
     output:
-        join(OUT_DIR, 'fastQC_initial', '{sample}' + '.R1_fastqc.html')
+        r1 = join(OUT_DIR, 'fastQC', '{sample}' + '.R1_fastqc.html')
     log:
-        join(OUT_DIR, '{sample}', 'fastQC_initial.log')
+        join(OUT_DIR, 'fastQC', '{sample}' + '.fastQC_se.log')
     benchmark:
-        join(OUT_DIR, '{sample}', 'fastQC_initial.benchmark.tsv')
+        join(OUT_DIR, 'fastQC', '{sample}' + '.fastQC_se.benchmark.tsv')
     message: 
-        """--- Checking read quality of sample "{wildcards.sample}" with FastQC """
+        """--- Checking read quality of SE sample "{wildcards.sample}" with FastQC """
     run:
-        if not os.path.exists(join(OUT_DIR, 'fastQC_initial')):
-            os.makedirs(join(OUT_DIR, 'fastQC_initial'))
-        shell('fastqc'
-                ' -o ' + join(OUT_DIR, 'fastQC_initial') + 
-                ' {input.r1} > {log} 2>&1')
+        if not os.path.exists(join(OUT_DIR, 'fastQC')):
+            os.makedirs(join(OUT_DIR, 'fastQC'))
+        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.r1} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && fastqc {wildcards.sample}.R1.fq.gz' 
+                ' > {log} 2>&1'
+                ' && mv ' + join(WORK_DIR, USER, JOB_ID) + '/*fastqc* ' + join(OUT_DIR, 'fastQC'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
-## Rule to trim raw fastq files
-rule trimming:
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to check raw PE read quality
+rule fastqcPE:
     input:
-        r1 = lambda wildcards: FILES[wildcards.sample]['R1']
+        r1 = lambda wildcards: peFILES[wildcards.sample]['R1'],
+        r2 = lambda wildcards: peFILES[wildcards.sample]['R2']
     output:
-        r1 = join(OUT_DIR, '{sample}', '{sample}_trimmed_R1.fastq')
+        r1 = join(OUT_DIR, 'fastQC', '{sample}' + '.R1_fastqc.html'),
+        r2 = join(OUT_DIR, 'fastQC', '{sample}' + '.R2_fastqc.html')
     log:
-        join(OUT_DIR, '{sample}', 'sickle.log')
+        join(OUT_DIR, 'fastQC', '{sample}' + '.fastQC_init_pe.log')
     benchmark:
-        join(OUT_DIR, '{sample}', 'sickle.benchmark.tsv')
+        join(OUT_DIR, 'fastQC', '{sample}' + '.fastQC_init_pe.benchmark.tsv')
     message: 
-        """--- Trimming raw reads of sample "{wildcards.sample}" """
+        """--- Checking read quality of PE sample "{wildcards.sample}" with FastQC """
     run:
-        shell('sickle se' 
-                ' -f {input.r1}'
-                ' -t sanger'
-                ' -o {output.r1}'
-                ' -q 20'
-                ' -l 30 > {log} 2>&1')
+        if not os.path.exists(join(OUT_DIR, 'fastQC')):
+            os.makedirs(join(OUT_DIR, 'fastQC'))
+        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && fastqc {wildcards.sample}.R1.fq.gz {wildcards.sample}.R2.fq.gz' 
+                ' > {log} 2>&1'
+                ' && mv ' + join(WORK_DIR, USER, JOB_ID) + '/*fastqc* ' + join(OUT_DIR, 'fastQC'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
-## Rule to check quality of trimmed reads
-rule fastqc_final:
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to map PE reads with HISAT2
+rule hisat2_se_mapping:
     input:
-        r1 = rules.trimming.output.r1
+        r1 = lambda wildcards: seFILES[wildcards.sample]['R1']
     output:
-        join(OUT_DIR, 'fastQC_final', '{sample}' + '_trimmed_R1_fastqc.html')
+        bam = join(OUT_DIR, 'HISAT-2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     log:
-        join(OUT_DIR, '{sample}', 'fastQC_final.log')
+        join(OUT_DIR, 'HISAT-2', '{sample}', 'hs2_map_se.log')
     benchmark:
-        join(OUT_DIR, '{sample}', 'fastQC_final.benchmark.tsv')
+        join(OUT_DIR, 'HISAT-2', '{sample}', 'hs2_map_se.benchmark.tsv')
     message: 
-        """--- Checking trimmed read quality of sample "{wildcards.sample}" with FastQC """
+        """--- Mapping SE reads for sample {wildcards.sample} to genome with HISAT-2 """
     run:
-        if not os.path.exists(join(OUT_DIR, 'fastQC_final')):
-            os.makedirs(join(OUT_DIR, 'fastQC_final'))
-        shell('fastqc'
-                ' -o ' + join(OUT_DIR, 'fastQC_final') + 
-                ' {input.r1} > {log} 2>&1')
+        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(dirname(DNA), rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(INDEX, '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.r1} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && (hisat2'
+                ' -p 16'
+                ' --dta'
+                ' -x ' + join(rstrip(os.path.basename(DNA), '.fa') + '_tran') +
+                ' -U {wildcards.sample}.R1.fq.gz) 2>{log}'
+                ' | samtools sort -@ 8 -o csorted.bowtie2.bam -')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'HISAT-2', '{wildcards.sample}', '{wildcards.sample}' + '.csorted.bowtie2.bam'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
-## Rule to generate bowtie2 genome index file
-rule index:
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to check raw PE read quality
+rule hisat2_pe_mapping:
     input:
-        dna = DNA
+        r1 = lambda wildcards: peFILES[wildcards.sample]['R1'],
+        r2 = lambda wildcards: peFILES[wildcards.sample]['R2']
     output:
-        index = join(dirname(DNA), rstrip(DNA, '.fa') + '.rev.1.bt2'),
-        bt2i = join(dirname(DNA), rstrip(DNA, '.fa') + '.ok')
+        bam = join(OUT_DIR, 'HISAT-2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     log:
-        join(dirname(DNA), 'bt2.index.log')
+        join(OUT_DIR, 'HISAT-2', '{sample}', 'hs2_map_pe.log')
     benchmark:
-        join(dirname(DNA), 'bt2.index.benchmark.tsv')
+        join(OUT_DIR, 'HISAT-2', '{sample}', 'hs2_map_pe.benchmark.tsv')
     message: 
-        """--- Building bowtie2 genome index """
+        """--- Mapping PE reads for sample {wildcards.sample} to genome with HISAT-2 """
     run:
-        shell('samtools faidx {input.dna}')
-        shell('bowtie2-build {input.dna} ' + join(dirname(DNA), rstrip(DNA, '.fa')) + ' > {log} 2>&1')
-        shell('touch ' + join(dirname(DNA), rstrip(DNA, '.fa') + '.ok'))
+        # shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(dirname(DNA), rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(INDEX, '*') + ' ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && (hisat2'
+                ' -p 16'
+                ' --dta'
+                ' -x ' + rstrip(os.path.basename(DNA), '.fa') + '_tran' +
+                ' -1 {wildcards.sample}.R1.fq.gz'
+                ' -2 {wildcards.sample}.R2.fq.gz)'
+                ' 2>{log}'
+                ' | samtools sort -@ 8 -o csorted.bowtie2.bam -')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'HISAT-2', '{wildcards.sample}', '{wildcards.sample}' + '.csorted.bowtie2.bam'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
-## Rule for mapping reads to the genome with Tophat
-rule tophat:
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to assemble transcripts with StringTie
+rule stringtie_assembly:
     input:
-        reads = rules.trimming.output.r1,
-        idx = rules.index.output.bt2i
-    output: 
-        bam = join(OUT_DIR, '{sample}', 'tophat_out', 'accepted_hits.bam')
-    params: 
+        bam = join(OUT_DIR, 'HISAT-2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
+    output:
+        asmbly = join(OUT_DIR, 'StringTie', '{sample}', '{sample}' + '.gtf')
+    params:
         gtf = GTF
     log:
-        join(OUT_DIR, '{sample}', 'tophat_out', 'tophat.map.log')
+        join(OUT_DIR, 'StringTie', '{sample}', 'st_asmbly.log')
     benchmark:
-        join(OUT_DIR, '{sample}', 'tophat_out', 'tophat.map.benchmark.tsv')
+        join(OUT_DIR, 'StringTie', '{sample}', 'st_asmbly.benchmark.tsv')
     message: 
-        """--- Mapping sample "{wildcards.sample}" with Tophat."""
-    run: 
-          shell('tophat'                                     
-                ' -o ' + join(OUT_DIR, '{wildcards.sample}', 'tophat_out') + '/'    
-                ' -G {params.gtf}'                                 
-                ' -p 2 ' + join(dirname(DNA), rstrip(DNA, '.fa')) +                           
-                ' {input.reads} > {log} 2>&1')
-
-## Rule to collate fastQC outputs with multiQC
-rule multiQC_fastQC:
-    input:
-        expand(join(OUT_DIR, 'fastQC_initial', '{sample}' + '.R1_fastqc.html'), sample = SAMPLES),
-        expand(join(OUT_DIR, 'fastQC_final', '{sample}' + '_trimmed_R1_fastqc.html'), sample = SAMPLES)
-    output:
-        file = join(OUT_DIR, 'MultiQC_fastQC', 'multiqc_report.html')
-    log:
-        join(OUT_DIR, 'MultiQC_fastQC', 'multiQC.log')
-    benchmark:
-        join(OUT_DIR, 'MultiQC_fastQC', 'multiQC.benchmark.tsv')
-    message: 
-        """--- Running MultiQC_fastQC """
+        """--- Assembling transcripts for sample {wildcards.sample} with StringTie """
     run:
+        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {params.gtf} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.bam} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && stringtie'
+                ' {wildcards.sample}.csorted.bowtie2.bam'
+                ' -p 16'
+                ' -G ' + os.path.basename(GTF) +
+                ' -o {wildcards.sample}.gtf'
+                ' -l {wildcards.sample} > {log}')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.gtf') + ' ' + join(OUT_DIR, 'StringTie', '{wildcards.sample}'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
+
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to merge StringTie assemblies
+rule merge_assemblies:
+    input:
+        assemblies = expand(join(OUT_DIR, 'StringTie', '{sample}', '{sample}' + '.gtf'), sample = SAMPLES)
+    output:
+        asmbly = join(OUT_DIR, 'StringTie', 'stringtie_merged.gtf')
+    params:
+        gtf = GTF
+    log:
+        join(OUT_DIR, 'StringTie', 'st_mrg.index.log')
+    benchmark:
+        join(OUT_DIR, 'StringTie', 'st_mrg.index.benchmark.tsv')
+    message: 
+        """--- Merging StringTie transcripts """
+    run:
+        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {params.gtf} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && ls -1 ' + join(OUT_DIR) + '/StringTie/*/*.gtf > ' + join(OUT_DIR, 'StringTie', 'assemblies.txt') +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && stringtie'
+                ' --merge'
+                ' -p 8'
+                ' -G ' + os.path.basename(GTF) +
+                ' -o stringtie_merged.gtf ' + join(OUT_DIR, 'StringTie', 'assemblies.txt'))
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'stringtie_merged.gtf') + ' ' + join(OUT_DIR, 'StringTie'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
+
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to merge StringTie assemblies
+rule compare_gtf:
+    input:
+        STasmbly = rules.merge_assemblies.output.asmbly
+    output:
+        asmbly = join(OUT_DIR, 'StringTie', 'gffcmp.annotated.gtf')
+    params:
+        gtf = GTF
+    message: 
+        """--- Comparing StringTie merged assembly with reference GTF """
+    run:
+        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {params.gtf} {input.STasmbly} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && gffcompare'
+                ' -G'
+                ' -r ' + os.path.basename(GTF) +
+                ' stringtie_merged.gtf')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'gffcmp.*') + ' ' + join(OUT_DIR, 'StringTie'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
+
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to measure transcript abundances with Stringtie
+rule abundances:
+    input:
+        bam = join(OUT_DIR, 'HISAT-2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'),
+        mrgd = rules.merge_assemblies.output.asmbly
+    output:
+        abundance = join(OUT_DIR, 'ballgown', '{sample}', '{sample}' + '_abundance.gtf')
+    log:
+        join(OUT_DIR, 'ballgown', '{sample}', 'st_abnd.log')
+    benchmark:
+        join(OUT_DIR, 'ballgown', '{sample}', 'st_abnd.benchmark.tsv')
+    message: 
+        """--- Estimating transcript abundances for sample {wildcards.sample} with StringTie"""
+    run:
+        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.bam} {input.mrgd} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && stringtie'
+                ' -e -B -p 8'
+                ' -G stringtie_merged.gtf' 
+                ' -o {wildcards.sample}_abundance.gtf'
+                ' {wildcards.sample}.csorted.bowtie2.bam'
+                ' > {log}')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}_abundance.gtf') + ' ' + join(OUT_DIR, 'ballgown', '{wildcards.sample}'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
+
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to combine abundance counts for downstream analysis
+rule collate_counts:
+    input:
+        abundances = expand(join(OUT_DIR, 'ballgown', '{sample}', '{sample}' + '_abundance.gtf'), sample = SAMPLES)
+    output:
+        geneCounts = join(OUT_DIR, 'ballgown', 'gene_counts.csv'),
+        transcriptCounts = join(OUT_DIR, 'ballgown', 'transcript_counts.csv')
+    message: 
+        """--- Outputting count matrices """
+    run:
+        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('prepDE.py'
+                ' -i ' + join(OUT_DIR, 'ballgown') + 
+                ' -g ' + join(OUT_DIR, 'ballgown', 'gene_counts.csv') +
+                ' -t ' + join(OUT_DIR, 'ballgown', 'transcript_counts.csv'))
+
+##--------------------------------------------------------------------------------------##
+##--------------------------------------------------------------------------------------##
+
+## Rule to collate fastQC and HISAT2 outputs with multiQC
+rule multiQC:
+    input:
+        expand(join(OUT_DIR, 'HISAT-2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'), sample = SAMPLES),
+        expand(join(OUT_DIR, 'fastQC', '{sample}' + '.R1_fastqc.html'), sample = SAMPLES),
+        expand(join(OUT_DIR, 'fastQC', '{sample}' + '.R2_fastqc.html'), sample = peSAMPLES)
+    output:
+        join(OUT_DIR, 'MultiQC', 'multiqc_report.html')
+    log:
+        join(OUT_DIR, 'MultiQC', 'multiQC.log')
+    benchmark:
+        join(OUT_DIR, 'MultiQC', 'multiQC.benchmark.tsv')
+    message: 
+        """--- Running MultiQC """
+    run:
+        shell('/programs/bin/labutils/mount_server cbsufsrv5 /data1')
+        shell('ls -1 ' + join(OUT_DIR) + '/HISAT-2/*/*log > ' + join(OUT_DIR, 'MultiQC', 'summary_files.txt'))
+        shell('ls -1 ' + join(OUT_DIR) + '/fastQC/*fastqc.zip >> ' + join(OUT_DIR, 'MultiQC', 'summary_files.txt'))
         shell('multiqc'
                 ' -f'
-                ' -o ' + join(OUT_DIR, 'MultiQC_fastQC') + ' ' +
-                join(OUT_DIR, 'fastQC_initial') + ' ' +
-                join(OUT_DIR, 'fastQC_final') + 
-                ' > {log} 2>&1')
-
-## Rule for assembling rtansfrags with Cufflinks
-rule cufflinks:
-    input: 
-        bam = rules.tophat.output.bam
-    output: 
-        gtf = join(OUT_DIR, '{sample}', 'cufflinks_out', 'transcripts.gtf')
-    params:  
-        gtf=GTF
-    log:
-        join(OUT_DIR, '{sample}', 'cufflinks.log')
-    benchmark:
-        join(OUT_DIR, '{sample}', 'cufflinks.benchmark.tsv')
-    message: 
-        """--- Assembling "{wildcards.sample}" transcripts with cufflinks."""
-    run: 
-        shell('cufflinks'
-              ' -g {params.gtf}'
-              ' -p 2'
-              ' -o ' +  join(OUT_DIR, '{wildcards.sample}', 'cufflinks_out') + '/'
-              ' {input.bam}'
-              ' &> {log}')
-
-## Rule for merging Cufflinks assembled transcripts
-rule cuffmerge:
-    input:
-        asmblys = expand(join(OUT_DIR, '{sample}', 'cufflinks_out', 'transcripts.gtf'), sample = SAMPLES)
-    output: 
-        merged = join(OUT_DIR, 'Cuffmerge', 'merged.gtf')
-    params: 
-        gtf =GTF, 
-        fa = DNA
-    log:
-        join(OUT_DIR, 'Cuffmerge', 'cuffmerge.log')
-    benchmark:
-        join(OUT_DIR, 'Cuffmerge', 'cuffmerge.benchmark.tsv')
-    message: 
-        "--- Comparing transcripts to the reference and outputting merged gtf file."
-    run: 
-        # generate the assemblies text file
-        shell('ls -1 ' + join(OUT_DIR) + '/*/cufflinks_out/transcripts.gtf > ' + join(OUT_DIR, 'assemblies.txt'))
-        # run cuffmerge
-        shell('cuffmerge'
-              ' -o ' + join(OUT_DIR, 'Cuffmerge') +
-              ' -g {params.gtf}'
-              ' --keep-tmp'
-              ' -s {params.fa}' 
-              ' -p 2 ' + join(OUT_DIR, 'assemblies.txt') + 
-              ' &> {log}')
-
-## Rule for quantifying abundance with Cuffquant
-rule cuffquant:
-    input:
-        bam = rules.tophat.output.bam,
-        gtf = rules.cuffmerge.output.merged,
-        dna = DNA
-    output: 
-        join(OUT_DIR, '{sample}', 'Cuffquant', 'abundances.cxb')
-    log:
-        join(OUT_DIR, '{sample}', 'Cuffquant', 'cffqnt.map.log')
-    benchmark:
-        join(OUT_DIR, '{sample}', 'Cuffquant', 'cffqnt.benchmark.tsv')
-    message: 
-        """--- Quantifying abundances with Cuffquant for sample "{wildcards.sample}"."""
-    run: 
-        # run cuffmerge
-        shell('cuffquant'
-              ' -o ' + join(OUT_DIR, '{wildcards.sample}', 'Cuffquant') +
-              # ' -p 8'
-              ' -b {input.dna}'
-              ' -u' 
-              ' {input.gtf}'
-              ' {input.bam}'
-              ' &> {log}')
-
-## Rule for quantifying abundance with Cuffquant
-rule cuffnorm:
-    input:
-        cxb = expand(join(OUT_DIR, '{sample}', 'Cuffquant', 'abundances.cxb'), sample=SAMPLES),
-        gtf = rules.cuffmerge.output.merged
-    output: 
-        join(OUT_DIR, 'Cuffnorm', 'expression_data', 'run.info')
-    log:
-        join(OUT_DIR, 'Cuffnorm', 'cffnrm.map.log')
-    benchmark:
-        join(OUT_DIR, 'Cuffnorm', 'cffnrm.benchmark.tsv')
-    message: 
-        """--- Merge Cuffquant abundances with Cuffnorm."""
-    run:
-        # create sample sheet
-        shell('echo -e "sample_name\tgroup" > ' + join(OUT_DIR, 'Cuffnorm', 'sample_sheet.txt'))
-        shell('ls -1 ' + join(OUT_DIR, '*', 'Cuffquant', 'abundances.cxb') + ' > ' + join(OUT_DIR, 'Cuffnorm', 'cq_abndces.txt'))
-        shell('cat ' + join(OUT_DIR, 'Cuffnorm', 'cq_abndces.txt') + ' | sed "s/\/Cuffquant.*//g" | sed "s/.*\///g" | paste -d"\t" ' + join(OUT_DIR, 'Cuffnorm', 'cq_abndces.txt') +' - >> ' + join(OUT_DIR, 'Cuffnorm', 'sample_sheet.txt'))
-        # run cuffnorm
-        shell('cuffnorm'
-              ' --use-sample-sheet'
-              ' -o ' + join(OUT_DIR, 'Cuffnorm', 'expression_data') +
-              # ' -p 8'
-              ' {input.gtf} ' + join(OUT_DIR, 'Cuffnorm', 'sample_sheet.txt') +
-              ' &> {log}')
-
-
-## Rule for extracting novel transcripts not present in the parent GTF file
-rule select_novel_transcripts:
-    input:
-        gtf = rules.cuffmerge.output.merged
-    output:
-        nvl_transcripts = join(OUT_DIR, 'Cuffmerge', 'nvl_transcripts.gtf')
-    message: 
-        "--- Extracting novel isoforms."
-    run: 
-        shell('grep -v "=" {input.gtf} > {output.nvl_transcripts}')
-
-## Rule for adding XLOC gene IDs as gene names to novel transcripts
-rule add_gene_name_to_unknown:
-    input: 
-        nvl_transcripts = rules.select_novel_transcripts.output.nvl_transcripts
-    output: 
-        nvlGeneName = join(OUT_DIR, 'Cuffmerge', 'nvl_transcripts_gn.gtf')
-    message: 
-        "--- Adding gene names to novel transcripts."
-    run:
-        import re 
-        fh_in = open(input[0], "r")
-        fh_out = open(output[0], "w")
-        for line in fh_in:
-          line = line.rstrip("\n")
-          if not re.search("gene_name", line):
-            gene_id = re.match('.*gene_id "(.*?)"', line).group(1)
-            fh_out.write(line + ' gene_name "' + gene_id + '";\n')
-
-## Rule for merging novel transcripts with known ones
-rule merge_novel_and_known:
-    input: 
-        novel = rules.add_gene_name_to_unknown.output.nvlGeneName, 
-        known = GTF
-    output: 
-        merged_all = join(OUT_DIR, 'Cuffmerge', 'merged_all.gtf')
-    message: 
-        "--- Merging known and novel transcripts."
-    run:  
-        shell('cat {input.novel} {input.known} > {output.merged_all}')
-
-# Rule for making a cDNA file from the new GTF file and the DNA, then prep index for bowtie2.
-rule make_cdna:
-    input:
-        dna = DNA,
-        gtf = rules.merge_novel_and_known.output.merged_all
-    output:
-        cdna = join(OUT_DIR, 'transcriptome', 'gffread_transcripts.fa'),
-        geneTrans = join(OUT_DIR, 'transcriptome', 'gffread_transcripts.gene_trans_map'),
-        bt2_trans_indx = join(OUT_DIR, 'transcriptome', 'gffread_transcripts.fa.bowtie2.ok')
-    log:
-        gffread = join(OUT_DIR, 'transcriptome', 'logs', 'gffread.log'),
-        trans_bt2 = join(OUT_DIR, 'transcriptome', 'logs', 'trans_bt2.log')
-    benchmark:
-        join(OUT_DIR, 'transcriptome', 'logs', 'gffread.benchmark.tsv')
-    message: 
-        "--- Building bowtie2 transcriptome index for gffread transcripts."
-    run:
-        # Extract a sequence for each transcript in the GTF file.
-        shell('gffread -F -w {output.cdna} -g {input.dna} {input.gtf} > {log.gffread}')
-        # Extract the FASTA header from the cDNA file and make into
-        # trans_map file.
-        shell('grep ">" {output.cdna} | sed "s/>//g" | sed "s/gene=//g" | awk \'{{print $2"\t"$1}}\' | sort -u > {output.geneTrans}')
-        # And finally make the index files.
-        shell('align_and_estimate_abundance.pl' 
-              ' --transcripts {output.cdna}'
-              ' --gene_trans_map {output.geneTrans}'
-              ' --est_method eXpress'
-              ' --aln_method bowtie2'
-              ' --prep_reference'
-              ' --output_dir ' + join(OUT_DIR, 'transcriptome') +
-              ' > {log.trans_bt2} 2>&1')
-
-# Rule for mapping reads to the new transcriptome file with bowtie2 and quantifying abundance with eXpress
-rule express:
-    input:
-        reads = lambda wildcards: FILES[wildcards.sample]['R1'],
-        cdna = rules.make_cdna.output.cdna,
-        geneTrans = rules.make_cdna.output.geneTrans
-    output:
-        results = join(OUT_DIR, 'eXpress', '{sample}', 'results.xprs')
-    log:
-        join(OUT_DIR, 'eXpress', '{sample}', 'logs', 'eXpress.log')
-    benchmark:
-        join(OUT_DIR, 'eXpress', '{sample}', 'logs', 'eXpress.benchmark.tsv')
-    message: 
-        """--- Mapping "{wildcards.sample}" reads to transcriptome with bowtie2 and quantifying abundance with eXpress."""
-    run:
-        shell('align_and_estimate_abundance.pl' 
-              ' --transcripts {input.cdna}'
-              ' --seqType fq'
-              ' --single {input.reads}'
-              ' --gene_trans_map {input.geneTrans}'
-              ' --thread_count 8'  
-              ' --est_method eXpress'
-              ' --aln_method bowtie2'
-              ' --output_dir ' + join(OUT_DIR, 'eXpress', '{wildcards.sample}') +  
-              ' > {log} 2>&1')
-
-
-rule merge_abundance:
-    input:
-        quants = expand(join(OUT_DIR, 'eXpress', '{sample}', 'results.xprs'), sample = SAMPLES)
-    output:
-        abundances = join(OUT_DIR, 'eXpress', 'genes.TMM.EXPR.matrix'),
-        samplesList = join(OUT_DIR, 'eXpress', 'genes.samples.list')
-    log:
-        join(OUT_DIR, 'eXpress', 'abnd_merge.log')
-    benchmark:
-        join(OUT_DIR, 'eXpress', 'abnd_merge.benchmark.tsv')        
-    message: 
-        "--- Merging eXpress outputs from all samples"
-    run:
-        shell('ls -1 ' + join(OUT_DIR, 'eXpress', '*', 'results.xprs.genes') + ' > ' + join(OUT_DIR, 'eXpress', 'genes.samples.list'))
-        shell('ls -1 ' + join(OUT_DIR, 'eXpress', '*', 'results.xprs') + ' > ' + join(OUT_DIR, 'eXpress', 'isoforms.samples.list'))
-        shell('cd ' + join(OUT_DIR, 'eXpress') +
-                ' && abundance_estimates_to_matrix.pl'
-                ' --est_method eXpress'
-                ' --name_sample_by_basedir'
-                ' --out_prefix genes'
-                ' ' + join(OUT_DIR, 'eXpress', 'genes.samples.list') +
-                ' > {log} 2>&1')
-        shell('cd ' + join(OUT_DIR, 'eXpress') +
-                ' && abundance_estimates_to_matrix.pl'
-                ' --est_method eXpress'
-                ' --name_sample_by_basedir'
-                ' --out_prefix isoforms'
-                ' ' + join(OUT_DIR, 'eXpress', 'isoforms.samples.list') +
+                ' -o ' + join(OUT_DIR, 'MultiQC') + ' -d -dd 2 -l ' + join(OUT_DIR, 'MultiQC', 'summary_files.txt') +
                 ' > {log} 2>&1')

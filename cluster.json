@@ -1,107 +1,65 @@
 {
     "__default__": {
         "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.def",
-        "cores"		: 2,
-        "bl"		: 2,
-        "time"      : "2:00:00"
-    },
-    "fastqc_init": {
-    	"q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.tophat",
-        "cores"		: 4,
-        "bl"		: 4,
-        "time"		: "12:00:00"
-    },
-	"trimming": {
-	"q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.cflnks",
-        "cores"		: 4,
-        "bl"		: 4,
-        "time"		: "12:00:00"
-	},
-    "fastqc_final": {
-        "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.tophat",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "default",
         "cores"     : 4,
         "bl"        : 4,
-        "time"      : "12:00:00"
+        "memory"    : "8G",
+        "time"      : "03:00:00"
     },
-	"index": {
-		"q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.cffmrg",
-        "cores"		: 2,
-        "bl"		: 2,
-        "time"		: "3:00:00"
-	},
-	"tophat": {
-		"q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.mkcdna",
-        "cores"		: 2,
-        "bl"		: 2,
-        "time"		: "2:00:00"
-	},
-	"multiQC_fastQC": {
-		"q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
-        "cores"		: 4,
-        "bl"		: 4,
-        "time"		: "4:00:00"
-	},
-    "cufflinks": {
+    "fastqcSE": {
         "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
-        "cores"     : 8,
-        "bl"        : 8,
-        "time"      : "24:00:00"
-    },
-    "cuffmerge": {
-        "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
-        "cores"     : 2,
-        "bl"        : 2,
-        "time"      : "2:00:00"
-    },
-    "cuffquant": {
-        "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
-        "cores"     : 8,
-        "bl"        : 8,
-        "time"      : "24:00:00"
-    },
-    "cuffnorm": {
-        "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
-        "cores"     : 8,
-        "bl"        : 8,
-        "time"      : "24:00:00"
-    },
-    "make_cdna": {
-        "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "fastqc_se",
         "cores"     : 4,
         "bl"        : 4,
-        "time"      : "4:00:00"
+        "memory"    : "8G",
+        "time"      : "01:00:00"
     },
-    "express": {
+    "fastqcPE": {
         "q"         : "regular.q",
-        "output"    : "/dev/null",
-        "jname"     : "sm.STAR2",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "fastqc_pe",
         "cores"     : 4,
         "bl"        : 4,
-        "time"      : "4:00:00"
+        "memory"    : "8G",
+        "time"      : "01:00:00"
+    },
+    "hisat2_se_mapping": {
+       "q"          : "regular.q",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "hs2.mapSE",
+        "cores"     : 8,
+        "bl"        : 8,
+        "memory"    : "32G",
+        "time"      : "03:00:00"
+    },
+    "hisat2_pe_mapping": {
+       "q"          : "regular.q",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "hs2.mapPE",
+        "cores"     : 8,
+        "bl"        : 8,
+        "memory"    : "32G",
+        "time"      : "03:00:00"
+    },
+    "stringtie_assembly": {
+       "q"          : "regular.q",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "st.asmbl",
+        "cores"     : 8,
+        "bl"        : 8,
+        "memory"    : "32G",
+        "time"      : "02:00:00"
+    },
+    "abundances": {
+       "q"          : "regular.q",
+        "output"    : "/home/ya76/GitHub_Repositories/Aegypti.Male.reproductive.tissue.L5/cluster_logs/",
+        "jname"     : "st.abndns",
+        "cores"     : 4,
+        "bl"        : 4,
+        "memory"    : "8G",
+        "time"      : "02:00:00"
     }
 }
-
